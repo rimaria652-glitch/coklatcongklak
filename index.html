@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>COKLAT - Congklak Logika Matematika</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tone.js untuk Audio API -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --board-orange: #f97316;
+            --board-dark: #c2410c;
+            --hole-inner: #9a3412;
+            --seed-color: #171717;
+        }
+
+        body, html {
+            font-family: 'Fredoka', sans-serif;
+            background-color: #fffbeb; /* Amber 50 */
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100dvh;
+            overflow: hidden;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* Animations */
+        @keyframes popIn {
+            0% { transform: scale(0.5); opacity: 0; }
+            80% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes dropIn {
+            0% { transform: translateY(-20px) scale(0.8); opacity: 0; }
+            100% { transform: translateY(0) scale(1); opacity: 1; }
+        }
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 0 10px rgba(74, 222, 128, 0.5); }
+            50% { box-shadow: 0 0 20px rgba(74, 222, 128, 0.9); }
+        }
+        @keyframes floatY {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-15px); }
+        }
+
+        @keyframes goyang {
+            0%, 100% { transform: translateY(0) rotate(-3deg); }
+            50% { transform: translateY(-12px) rotate(3deg); }
+        }
+
+        .animate-pop { animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        .animate-drop { animation: dropIn 0.2s ease-out forwards; }
+        .pulse-glow { animation: pulseGlow 1.5s infinite; }
+        .animate-float { animation: floatY 4s ease-in-out infinite; }
+        .animate-goyang { animation: goyang 3.5s ease-in-out infinite; }
+
+        /* Board & Holes */
+        .congklak-board {
+            background-color: var(--board-orange);
+            border: 4px solid var(--board-dark);
+            border-radius: 999px;
+            box-shadow: inset 0 -8px 15px rgba(0,0,0,0.2), 0 10px 20px rgba(0,0,0,0.3);
+            position: relative;
+        }
+
+        .hole {
+            background-color: var(--hole-inner);
+            border-radius: 50%;
+            box-shadow: inset 0 8px 15px rgba(0,0,0,0.6), 0 2px 5px rgba(255,255,255,0.3);
+            display: flex;
+            flex-wrap: wrap;
+            align-content: center;
+            justify-content: center;
+            gap: 2px;
+            padding: 8px;
+            cursor: pointer;
+            position: relative;
+            transition: transform 0.1s, border 0.2s;
+            min-width: 44px; /* Touch target size */
+            min-height: 44px;
+            aspect-ratio: 1;
+        }
+
+        .hole:active { transform: scale(0.95); }
+        .hole.active-target { border: 3px solid #fef08a; }
+
+        .lumbung {
+            background-color: var(--hole-inner);
+            border-radius: 50px;
+            box-shadow: inset 0 10px 20px rgba(0,0,0,0.6), 0 2px 5px rgba(255,255,255,0.3);
+            display: flex;
+            flex-wrap: wrap;
+            align-content: flex-start;
+            justify-content: center;
+            padding: 15px 10px;
+            gap: 3px;
+            cursor: pointer;
+            position: relative;
+            min-height: 80px;
+            overflow-y: auto;
+        }
+
+        /* Seeds */
+        .seed {
+            width: 14px;
+            height: 14px;
+            background: radial-gradient(circle at 30% 30%, #555, var(--seed-color));
+            border-radius: 50% 50% 50% 20%;
+            box-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            transform: rotate(45deg);
+            z-index: 10;
+        }
+
+        /* UI Badges */
+        .badge {
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            font-size: 0.75rem;
+            font-weight: bold;
+            padding: 2px 8px;
+            border-radius: 999px;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        /* Layout Utilities */
+        .screen {
+            display: none;
+            flex-direction: column;
+            width: 100%;
+            height: 100%;
+        }
+        .screen.active { display: flex; }
+
+        /* Buttons */
+        .btn {
+            min-height: 44px; /* A11y touch target */
+            transition: all 0.1s ease;
+            user-select: none;
+        }
+        .btn:active { transform: scale(0.95); }
+
+        /* Custom Scrollbar for small areas */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 10px; }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <!-- Global Header (Audio & Fullscreen Controls) -->
+    <header class="absolute top-0 left-0 w-full p-3 flex justify-between items-center z-50 pointer-events-none">
+        <div id="header-left" class="pointer-events-auto">
+            <!-- Back button injected here via JS when needed -->
+        </div>
+        <div class="flex gap-2 pointer-events-auto bg-white/80 backdrop-blur px-3 py-1.5 rounded-full shadow-sm border border-gray-200">
+            <button onclick="AudioSys.toggleBGM()" id="btn-bgm" class="btn text-xl" title="BGM (Musik)">🎵</button>
+            <button onclick="AudioSys.toggleSFX()" id="btn-sfx" class="btn text-xl" title="Efek Suara">🔊</button>
+            <button onclick="toggleFullscreen()" id="btn-fs" class="btn text-xl" title="Layar Penuh">⛶</button>
+        </div>
+    </header>
+
+    <main id="app-container" class="w-full h-full relative">
+        
+        <!-- Watermark Hak Cipta -->
+        <div class="absolute bottom-1 md:bottom-2 left-1/2 transform -translate-x-1/2 text-[10px] md:text-xs font-bold text-gray-400/80 z-50 pointer-events-none whitespace-nowrap tracking-wider">
+            Dibuat oleh Rut Rima Ria
+        </div>
+        
+        <!-- ================= HOME SCREEN ================= -->
+        <div id="screen-home" class="screen active relative pt-14 pb-2 px-4 h-full overflow-hidden bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-100 via-amber-50 to-white">
+            <div class="max-w-6xl mx-auto w-full h-full flex flex-col md:flex-row items-center justify-center gap-4 md:gap-8">
+                
+                <!-- Kiri: Gambar dan Judul -->
+                <div class="flex-1 flex flex-col items-center justify-center text-center animate-pop w-full">
+                    <div class="relative w-full max-w-[20rem] md:max-w-lg cursor-pointer flex justify-center z-10">
+                        <!-- max-h-[42vh] memastikan gambar membesar optimal namun tidak merusak batas 1 layar -->
+                        <img src="https://i.imgur.com/Imbz4pS.png" alt="Ilustrasi Congklak" class="w-full h-auto max-h-[42vh] object-contain drop-shadow-2xl animate-goyang">
+                    </div>
+                    <!-- Margin atas ditarik dengan margin negatif (-mt-4) agar menempel pas di bawah gambar -->
+                    <h2 class="text-2xl md:text-3xl lg:text-4xl font-black text-orange-800 -mt-2 md:-mt-4 mb-2 bg-orange-200/50 px-5 py-1.5 rounded-full border border-orange-200 shadow-sm inline-block tracking-tight z-20">Congklak Logika Matematika</h2>
+                    <!-- Teks disembunyikan di HP agar tidak memakan tempat, muncul di Tablet/Desktop -->
+                    <p class="text-sm md:text-base text-gray-700 max-w-sm font-medium leading-snug mx-auto hidden md:block">Mari belajar <span class="font-bold text-orange-600">perkalian</span> dan <span class="font-bold text-green-600">pembagian</span> melalui kearifan lokal.</p>
+                </div>
+
+                <!-- Kanan: Tombol Menu -->
+                <div class="flex-1 w-full max-w-xs md:max-w-sm flex flex-col justify-center gap-3 md:gap-4 z-10 px-4 md:px-0 mx-auto">
+                    <!-- Tombol Latihan Perkalian -->
+                    <button onclick="AppFlow.startTraining('multiply')" class="w-full bg-gradient-to-b from-orange-400 to-orange-600 hover:from-orange-500 hover:to-orange-700 text-white border-4 border-orange-800 rounded-full py-3 px-4 font-bold text-lg md:text-xl shadow-[0_6px_0_rgb(154,52,18)] active:shadow-none active:translate-y-[6px] transition-all flex items-center justify-center gap-2">
+                        <span class="text-2xl">✖️</span> Latihan Perkalian
+                    </button>
+                    
+                    <!-- Tombol Latihan Pembagian -->
+                    <button onclick="AppFlow.startTraining('divide')" class="w-full bg-gradient-to-b from-green-400 to-green-600 hover:from-green-500 hover:to-green-700 text-white border-4 border-green-800 rounded-full py-3 px-4 font-bold text-lg md:text-xl shadow-[0_6px_0_rgb(22,101,52)] active:shadow-none active:translate-y-[6px] transition-all flex items-center justify-center gap-2">
+                        <span class="text-2xl">➗</span> Latihan Pembagian
+                    </button>
+
+                    <!-- Tombol Demo Guru -->
+                    <button onclick="AppFlow.startTeacherDemo()" class="w-full bg-gradient-to-b from-purple-400 to-purple-600 hover:from-purple-500 hover:to-purple-700 text-white border-4 border-purple-800 rounded-full py-3 px-4 font-bold text-lg md:text-xl shadow-[0_6px_0_rgb(88,28,135)] active:shadow-none active:translate-y-[6px] transition-all flex items-center justify-center gap-2">
+                        <span class="text-2xl">👨‍🏫</span> Simulasi Guru
+                    </button>
+
+                    <!-- Tombol Turnamen Duel -->
+                    <button onclick="AppFlow.startDuel()" class="w-full bg-gradient-to-b from-blue-500 to-blue-700 hover:from-blue-600 hover:to-blue-800 text-white border-4 border-blue-900 rounded-full py-3 px-4 font-bold text-lg md:text-xl shadow-[0_6px_0_rgb(30,58,138)] active:shadow-none active:translate-y-[6px] transition-all flex items-center justify-center gap-2">
+                        <span class="text-2xl">🏆</span> Turnamen 1 vs 1
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= TRAINING MODE (MULTIPLY/DIVIDE) ================= -->
+        <div id="screen-training" class="screen bg-amber-50/50 pt-14 pb-2 px-2 flex-col h-full">
+            
+            <!-- Progress & Score -->
+            <div class="flex justify-between items-center bg-white p-2 rounded-xl shadow-sm border border-amber-200 mb-2 shrink-0">
+                <div class="text-sm font-bold text-gray-500">Soal: <span id="train-progress" class="text-orange-600">1/5</span></div>
+                <div class="text-lg font-black text-gray-800" id="train-question">3 x 4 = ?</div>
+                <div class="text-sm font-bold text-gray-500">Skor: <span id="train-score" class="text-green-600">0</span></div>
+            </div>
+
+            <div class="text-center shrink-0 mb-2">
+                <p id="train-instruction" class="text-sm md:text-base font-semibold text-gray-700 bg-white inline-block px-4 py-1.5 rounded-full shadow-sm border border-dashed border-gray-400">
+                    Instruksi
+                </p>
+            </div>
+
+            <!-- Board Area (Flexible) -->
+            <div class="flex-1 min-h-0 flex flex-col justify-center items-center relative w-full max-w-4xl mx-auto">
+                
+                <!-- Division Pool (Only visible in divide mode) -->
+                <div id="train-pool-area" class="mb-4 hidden flex-col items-center">
+                    <div class="text-xs font-bold bg-white px-3 py-1 rounded-full border border-gray-300 mb-1 shadow-sm">Lumbung Utama</div>
+                    <div id="train-pool" class="lumbung w-32 h-20 !rounded-3xl" onclick="TrainingMode.poolClick()"></div>
+                </div>
+
+                <!-- Dynamic Holes Grid -->
+                <div class="w-full flex justify-center px-2">
+                    <div id="train-board" class="flex flex-row flex-wrap justify-center items-center gap-3 md:gap-6 w-full max-w-3xl">
+                        <!-- Injected via JS -->
+                    </div>
+                </div>
+
+                <!-- CRT Reflective Question -->
+                <div id="train-reflective" class="mt-6 text-sm text-center italic font-semibold text-gray-600 max-w-md hidden">
+                    "Perhatikan, pembagian adalah membalikkan proses perkalian. Apakah hasilnya adil?"
+                </div>
+            </div>
+
+            <!-- Action Area -->
+            <div class="bg-white p-3 rounded-t-3xl shadow-[0_-4px_15px_rgba(0,0,0,0.05)] border-t-2 border-amber-200 shrink-0 flex flex-wrap justify-center items-center gap-3">
+                <span id="train-answer-label" class="font-bold text-gray-700">Total Biji = </span>
+                <input type="number" id="train-answer" class="w-20 text-center font-black text-xl p-2 border-2 border-amber-300 rounded-xl outline-none focus:border-orange-500" placeholder="?">
+                <button onclick="TrainingMode.validateAnswer()" class="btn bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-6 rounded-xl shadow-md border-b-4 border-orange-700">Cek ✔️</button>
+            </div>
+        </div>
+
+        <!-- ================= TEACHER DEMO MODE ================= -->
+        <div id="screen-demo" class="screen bg-purple-50/50 pt-14 pb-2 px-2 flex-col h-full">
+            
+            <!-- Controls -->
+            <div class="bg-white p-2 rounded-xl shadow-sm border border-purple-200 mb-2 shrink-0 flex flex-wrap justify-center items-center gap-2">
+                <input type="number" id="demo-n1" class="w-16 text-center font-bold text-lg p-1 border-2 border-gray-300 rounded-lg" min="1" max="14" placeholder="A">
+                <select id="demo-op" class="font-bold text-lg p-1 border-2 border-gray-300 rounded-lg bg-gray-50 outline-none">
+                    <option value="x">Di Kali (x)</option>
+                    <option value=":">Di Bagi (:)</option>
+                </select>
+                <input type="number" id="demo-n2" class="w-16 text-center font-bold text-lg p-1 border-2 border-gray-300 rounded-lg" min="1" max="14" placeholder="B">
+                <button onclick="DemoMode.setupBoard()" class="btn bg-purple-600 hover:bg-purple-700 text-white font-bold py-1.5 px-4 rounded-lg shadow-sm border-b-2 border-purple-800">Mulai Simulasi</button>
+            </div>
+
+            <div class="text-center shrink-0 mb-2">
+                <p id="demo-instruction" class="text-sm font-semibold text-gray-700 bg-yellow-100 inline-block px-4 py-1 rounded-full border border-yellow-300">
+                    Masukkan angka (Maks 14) lalu tekan Mulai Simulasi
+                </p>
+            </div>
+
+            <!-- Authentic Board 14 Holes -->
+            <div class="flex-1 min-h-0 flex flex-col justify-center items-center relative w-full overflow-x-auto pb-4">
+                <div class="congklak-board flex items-center p-3 gap-2 w-max max-w-full">
+                    <!-- Left Store -->
+                    <div id="demo-store-left" class="lumbung w-20 h-40" onclick="DemoMode.storeClick()"></div>
+                    
+                    <!-- 14 Holes (2 rows of 7) -->
+                    <div class="grid grid-cols-7 grid-rows-2 gap-2 h-full">
+                        <!-- Top Row (0-6) -->
+                        <div class="hole" id="demo-hole-0" onclick="DemoMode.holeClick(0)"></div>
+                        <div class="hole" id="demo-hole-1" onclick="DemoMode.holeClick(1)"></div>
+                        <div class="hole" id="demo-hole-2" onclick="DemoMode.holeClick(2)"></div>
+                        <div class="hole" id="demo-hole-3" onclick="DemoMode.holeClick(3)"></div>
+                        <div class="hole" id="demo-hole-4" onclick="DemoMode.holeClick(4)"></div>
+                        <div class="hole" id="demo-hole-5" onclick="DemoMode.holeClick(5)"></div>
+                        <div class="hole" id="demo-hole-6" onclick="DemoMode.holeClick(6)"></div>
+                        <!-- Bottom Row (7-13) -->
+                        <div class="hole" id="demo-hole-7" onclick="DemoMode.holeClick(7)"></div>
+                        <div class="hole" id="demo-hole-8" onclick="DemoMode.holeClick(8)"></div>
+                        <div class="hole" id="demo-hole-9" onclick="DemoMode.holeClick(9)"></div>
+                        <div class="hole" id="demo-hole-10" onclick="DemoMode.holeClick(10)"></div>
+                        <div class="hole" id="demo-hole-11" onclick="DemoMode.holeClick(11)"></div>
+                        <div class="hole" id="demo-hole-12" onclick="DemoMode.holeClick(12)"></div>
+                        <div class="hole" id="demo-hole-13" onclick="DemoMode.holeClick(13)"></div>
+                    </div>
+
+                    <!-- Right Store -->
+                    <div id="demo-store-right" class="lumbung w-20 h-40 opacity-50 cursor-not-allowed"></div>
+                </div>
+            </div>
+
+            <!-- Answer Section -->
+            <div class="bg-white p-3 rounded-t-3xl shadow-sm border-t-2 border-purple-200 shrink-0 flex justify-center items-center gap-3">
+                <span class="font-bold text-gray-700">Jawaban Akhir = </span>
+                <input type="number" id="demo-answer" class="w-20 text-center font-black text-xl p-1 border-2 border-purple-300 rounded-lg outline-none">
+                <button onclick="DemoMode.validateAnswer()" class="btn bg-green-500 hover:bg-green-600 text-white font-bold py-1.5 px-4 rounded-lg shadow-md border-b-4 border-green-700">Cek Pembuktian ✔️</button>
+            </div>
+        </div>
+
+        <!-- ================= DUEL TOURNAMENT MODE ================= -->
+        <div id="screen-duel" class="screen bg-gray-900 pt-14 flex-col h-full relative overflow-hidden">
+            
+            <!-- Central Question -->
+            <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-20 bg-white p-4 rounded-3xl border-4 border-yellow-400 shadow-2xl text-center min-w-[200px]">
+                <p class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Siapa Cepat!</p>
+                <h2 id="duel-question" class="text-4xl md:text-5xl font-black text-gray-800">5 x 5 = ?</h2>
+            </div>
+
+            <!-- Split Screen Areas -->
+            <div class="flex-1 flex flex-col md:flex-row w-full h-full">
+                
+                <!-- Player 1 (Red/Top/Left) -->
+                <div class="flex-1 bg-red-50/90 border-b-4 md:border-b-0 md:border-r-4 border-gray-800 flex flex-col p-4 relative justify-between">
+                    <div class="flex justify-between items-center">
+                        <h3 class="font-black text-red-700 text-2xl drop-shadow-sm">P1 🔴</h3>
+                        <div class="bg-white px-4 py-1 rounded-full font-black text-2xl text-red-600 shadow-sm border-2 border-red-200">Skor: <span id="duel-p1-score">0</span></div>
+                    </div>
+                    <div id="duel-p1-options" class="grid grid-cols-2 gap-2 mt-auto mb-2 md:mb-10 w-full max-w-sm mx-auto">
+                        <!-- Buttons injected JS -->
+                    </div>
+                </div>
+
+                <!-- Player 2 (Blue/Bottom/Right) -->
+                <div class="flex-1 bg-blue-50/90 flex flex-col p-4 relative justify-between">
+                    <div class="flex justify-between items-center">
+                        <div class="bg-white px-4 py-1 rounded-full font-black text-2xl text-blue-600 shadow-sm border-2 border-blue-200">Skor: <span id="duel-p2-score">0</span></div>
+                        <h3 class="font-black text-blue-700 text-2xl drop-shadow-sm">🔵 P2</h3>
+                    </div>
+                    <div id="duel-p2-options" class="grid grid-cols-2 gap-2 mt-auto mb-2 md:mb-10 w-full max-w-sm mx-auto">
+                        <!-- Buttons injected JS -->
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ================= SUMMARY SCREEN ================= -->
+        <div id="screen-summary" class="screen bg-green-50 justify-center items-center p-4 h-full absolute top-0 left-0 z-40">
+            <div class="bg-white p-6 md:p-8 rounded-3xl border-4 border-green-500 shadow-2xl text-center max-w-md w-full animate-pop">
+                <div class="text-6xl mb-2">🏅</div>
+                <h2 class="text-3xl font-black text-gray-800 mb-1">Sesi Selesai!</h2>
+                <p class="text-gray-600 font-semibold mb-6">Berikut adalah hasil belajarmu:</p>
+                
+                <div class="grid grid-cols-2 gap-4 mb-6">
+                    <div class="bg-green-100 p-3 rounded-xl border border-green-200">
+                        <div class="text-sm text-green-800 font-bold">Benar</div>
+                        <div id="sum-correct" class="text-3xl font-black text-green-600">0</div>
+                    </div>
+                    <div class="bg-red-100 p-3 rounded-xl border border-red-200">
+                        <div class="text-sm text-red-800 font-bold">Belum Tepat</div>
+                        <div id="sum-wrong" class="text-3xl font-black text-red-600">0</div>
+                    </div>
+                </div>
+                
+                <div class="mb-8">
+                    <div class="text-sm text-gray-500 font-bold mb-1">Persentase Keberhasilan</div>
+                    <div class="w-full bg-gray-200 rounded-full h-4 relative overflow-hidden">
+                        <div id="sum-bar" class="bg-gradient-to-r from-green-400 to-green-600 h-4 rounded-full transition-all duration-1000 w-0"></div>
+                    </div>
+                    <div id="sum-percent" class="text-lg font-black text-green-700 mt-1">0%</div>
+                </div>
+
+                <button onclick="AppFlow.returnToHome()" class="btn w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-xl shadow-md border-b-4 border-green-700 text-lg">Kembali ke Menu</button>
+            </div>
+        </div>
+
+        <!-- ================= FEEDBACK MODAL ================= -->
+        <div id="feedback-modal" class="absolute top-0 left-0 w-full h-full bg-black/60 z-50 hidden justify-center items-center p-4 backdrop-blur-sm">
+            <div id="feedback-content" class="bg-white p-6 rounded-3xl border-4 border-green-500 text-center max-w-sm w-full shadow-2xl transform scale-90 transition-transform">
+                <div id="fb-icon" class="text-5xl mb-2">🌟</div>
+                <h2 id="fb-title" class="text-2xl font-black text-gray-800 mb-2">Hebat!</h2>
+                <p id="fb-message" class="text-gray-600 font-semibold mb-6">Pesan umpan balik yang edukatif.</p>
+                <button id="fb-btn" onclick="UIHelper.closeFeedback()" class="btn w-full bg-green-500 text-white font-bold py-2 rounded-xl border-b-4 border-green-700">Lanjut</button>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        /**
+         * ==========================================
+         * 1. AUDIO SYSTEM (Tone.js API)
+         * ==========================================
+         */
+        const AudioSys = {
+            isReady: false,
+            isBgmOn: true,
+            isSfxOn: true,
+            bgmPart: null,
+            sfxSynth: null,
+
+            async init() {
+                if (this.isReady) return;
+                await Tone.start();
+                
+                // Synth for SFX (Polyphonic to prevent start-time errors on rapid clicks)
+                this.sfxSynth = new Tone.PolySynth(Tone.Synth, {
+                    envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 0.5 }
+                }).toDestination();
+                this.sfxSynth.volume.value = -10;
+
+                // Dedicated synth for BGM
+                const bgmSynth = new Tone.PolySynth(Tone.FMSynth, {
+                    harmonicity: 2, modulationIndex: 3,
+                    envelope: { attack: 0.05, decay: 0.2, sustain: 0.2, release: 1 }
+                }).toDestination();
+                bgmSynth.volume.value = -14; // Volume dinaikkan agar lebih terdengar
+
+                // Cheerful pentatonic sequence (C, D, E, G, A)
+                const melody = [
+                    {"time": "0:0", "note": "C4", "dur": "8n"},
+                    {"time": "0:1", "note": "E4", "dur": "8n"},
+                    {"time": "0:2", "note": "G4", "dur": "4n"},
+                    {"time": "0:4", "note": "A4", "dur": "8n"},
+                    {"time": "0:5", "note": "G4", "dur": "8n"},
+                    {"time": "0:6", "note": "E4", "dur": "4n"},
+                    {"time": "1:0", "note": "D4", "dur": "8n"},
+                    {"time": "1:1", "note": "E4", "dur": "8n"},
+                    {"time": "1:2", "note": "C4", "dur": "2n"}
+                ];
+
+                this.bgmPart = new Tone.Part((time, value) => {
+                    bgmSynth.triggerAttackRelease(value.note, value.dur, time);
+                }, melody);
+                this.bgmPart.loop = true;
+                this.bgmPart.loopEnd = "2m";
+                
+                Tone.Transport.start();
+                this.isReady = true;
+                this.updateUI();
+
+                if (this.isBgmOn) this.bgmPart.start(0);
+            },
+
+            playSFX(note, duration = "8n", type = "sine") {
+                if (!this.isSfxOn || !this.isReady) return;
+                try {
+                    this.sfxSynth.set({ oscillator: { type: type } });
+                    this.sfxSynth.triggerAttackRelease(note, duration);
+                } catch (e) { console.warn("Audio drop ignored"); }
+            },
+
+            playClick() { this.playSFX("C5", "32n", "square"); },
+            playDrop() { this.playSFX("G3", "16n", "sine"); },
+            playRemove() { this.playSFX("E4", "16n", "sine"); },
+            playCorrect() { this.playSFX(["C4", "E4", "G4", "C5"], "4n", "triangle"); },
+            playWrong() { this.playSFX("C2", "8n", "sawtooth"); },
+            playWin() { this.playSFX(["C4", "E4", "G4", "A4", "C5", "E5"], "2n", "triangle"); },
+
+            async toggleBGM() {
+                if (!this.isReady) {
+                    await this.init(); // Pastikan inisialisasi selesai dulu
+                } else {
+                    this.isBgmOn = !this.isBgmOn;
+                    if (this.isBgmOn) this.bgmPart.start(0);
+                    else this.bgmPart.stop();
+                    this.updateUI();
+                    this.playClick();
+                }
+            },
+
+            async toggleSFX() {
+                if (!this.isReady) {
+                    await this.init();
+                } else {
+                    this.isSfxOn = !this.isSfxOn;
+                    this.updateUI();
+                    this.playClick();
+                }
+            },
+
+            updateUI() {
+                document.getElementById('btn-bgm').textContent = this.isBgmOn ? '🎵' : '🔇';
+                document.getElementById('btn-sfx').textContent = this.isSfxOn ? '🔊' : '🔈';
+                document.getElementById('btn-bgm').style.opacity = this.isBgmOn ? '1' : '0.5';
+                document.getElementById('btn-sfx').style.opacity = this.isSfxOn ? '1' : '0.5';
+            }
+        };
+
+        // Pemicu Audio yang sangat kuat saat ada sentuhan/klik apa saja pertama kali
+        const startAudioSystem = async () => {
+            if (!AudioSys.isReady) {
+                await AudioSys.init();
+            }
+            document.removeEventListener('click', startAudioSystem);
+            document.removeEventListener('touchstart', startAudioSystem);
+        };
+        document.addEventListener('click', startAudioSystem);
+        document.addEventListener('touchstart', startAudioSystem);
+
+
+        /**
+         * ==========================================
+         * 2. FULLSCREEN API
+         * ==========================================
+         */
+        function toggleFullscreen() {
+            AudioSys.playClick();
+            const doc = window.document;
+            const docEl = doc.documentElement;
+            const btn = document.getElementById('btn-fs');
+
+            const requestFullScreen = docEl.requestFullscreen || docEl.mozRequestFullScreen || docEl.webkitRequestFullScreen || docEl.msRequestFullscreen;
+            const cancelFullScreen = doc.exitFullscreen || doc.mozCancelFullScreen || doc.webkitExitFullscreen || doc.msExitFullscreen;
+
+            if (!doc.fullscreenElement && !doc.mozFullScreenElement && !doc.webkitFullscreenElement && !doc.msFullscreenElement) {
+                if (requestFullScreen) {
+                    try {
+                        const promise = requestFullScreen.call(docEl);
+                        if (promise !== undefined) {
+                            promise.catch(err => console.warn("Fullscreen ditolak oleh lingkungan browser (misal: iframe):", err));
+                        }
+                    } catch (err) {
+                        console.warn("Fullscreen ditolak oleh lingkungan browser:", err);
+                    }
+                }
+                btn.textContent = '✖';
+                btn.title = 'Keluar Layar Penuh';
+            } else {
+                if (cancelFullScreen) {
+                    try {
+                        const promise = cancelFullScreen.call(doc);
+                        if (promise !== undefined) {
+                            promise.catch(err => console.warn("Exit Fullscreen error:", err));
+                        }
+                    } catch (err) {
+                        console.warn("Exit Fullscreen error:", err);
+                    }
+                }
+                btn.textContent = '⛶';
+                btn.title = 'Layar Penuh';
+            }
+        }
+
+
+        /**
+         * ==========================================
+         * 3. UI HELPER & STATE
+         * ==========================================
+         */
+        const UIHelper = {
+            fbCallback: null,
+            
+            showScreen(id) {
+                document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+                document.getElementById(id).classList.add('active');
+                
+                // Show/Hide back button based on screen
+                const headerLeft = document.getElementById('header-left');
+                if (id === 'screen-home') {
+                    headerLeft.innerHTML = '';
+                } else {
+                    headerLeft.innerHTML = `<button onclick="AppFlow.returnToHome()" class="btn bg-white/80 backdrop-blur px-3 py-1.5 rounded-full shadow-sm border border-gray-200 font-bold text-gray-700">⬅️ Kembali</button>`;
+                }
+            },
+
+            showFeedback(title, message, isCorrect, cb = null) {
+                const modal = document.getElementById('feedback-modal');
+                const content = document.getElementById('feedback-content');
+                
+                document.getElementById('fb-title').textContent = title;
+                document.getElementById('fb-message').textContent = message;
+                
+                if (isCorrect) {
+                    content.className = "bg-white p-6 rounded-3xl border-4 border-green-500 text-center max-w-sm w-full shadow-2xl animate-pop";
+                    document.getElementById('fb-icon').textContent = '🌟';
+                    document.getElementById('fb-btn').className = "btn w-full bg-green-500 text-white font-bold py-2 rounded-xl border-b-4 border-green-700";
+                    AudioSys.playCorrect();
+                } else {
+                    content.className = "bg-white p-6 rounded-3xl border-4 border-orange-500 text-center max-w-sm w-full shadow-2xl animate-pop";
+                    document.getElementById('fb-icon').textContent = '🤔';
+                    document.getElementById('fb-btn').className = "btn w-full bg-orange-500 text-white font-bold py-2 rounded-xl border-b-4 border-orange-700";
+                    AudioSys.playWrong();
+                }
+                
+                this.fbCallback = cb;
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            },
+
+            closeFeedback() {
+                AudioSys.playClick();
+                const modal = document.getElementById('feedback-modal');
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+                if (this.fbCallback) {
+                    this.fbCallback();
+                    this.fbCallback = null;
+                }
+            }
+        };
+
+        const AppState = {
+            mode: '',
+            questionIndex: 0,
+            maxQuestions: 5,
+            score: 0,
+            correctCount: 0,
+            wrongCount: 0
+        };
+
+
+        /**
+         * ==========================================
+         * 4. TRAINING MODE (MULTIPLY & DIVIDE)
+         * ==========================================
+         */
+        const TrainingMode = {
+            targetA: 0, // Groups (Holes)
+            targetB: 0, // Items per group
+            totalC: 0,
+            holesData: [],
+            poolData: 0,
+
+            start(type) {
+                AppState.mode = type;
+                AppState.questionIndex = 0;
+                AppState.score = 0;
+                AppState.correctCount = 0;
+                AppState.wrongCount = 0;
+                this.nextQuestion();
+            },
+
+            nextQuestion() {
+                if (AppState.questionIndex >= AppState.maxQuestions) {
+                    AppFlow.showSummary();
+                    return;
+                }
+                AppState.questionIndex++;
+                document.getElementById('train-progress').textContent = `${AppState.questionIndex}/${AppState.maxQuestions}`;
+                document.getElementById('train-score').textContent = AppState.score;
+                document.getElementById('train-answer').value = '';
+                
+                const crtEl = document.getElementById('train-reflective');
+                crtEl.classList.add('hidden');
+
+                // Generate random numbers 1-10
+                this.targetA = Math.floor(Math.random() * 5) + 2; // 2 to 6 groups for UX layout ease
+                this.targetB = Math.floor(Math.random() * 8) + 2; // 2 to 9 seeds
+                this.totalC = this.targetA * this.targetB;
+                
+                this.holesData = Array(this.targetA).fill(0);
+                this.poolData = (AppState.mode === 'divide') ? this.totalC : 0;
+
+                const areaPool = document.getElementById('train-pool-area');
+                const instruction = document.getElementById('train-instruction');
+
+                if (AppState.mode === 'multiply') {
+                    areaPool.classList.add('hidden');
+                    document.getElementById('train-question').innerHTML = `${this.targetA} <span class="text-orange-600">x</span> ${this.targetB} = ?`;
+                    instruction.innerHTML = `Isi <strong>${this.targetA} kelompok</strong> masing-masing <strong>${this.targetB} biji</strong>.`;
+                    document.getElementById('train-answer-label').textContent = 'Total Biji = ';
+                } else {
+                    areaPool.classList.remove('hidden');
+                    areaPool.classList.add('flex');
+                    document.getElementById('train-question').innerHTML = `${this.totalC} <span class="text-green-600">:</span> ${this.targetA} = ?`;
+                    instruction.innerHTML = `Bagikan <strong>${this.totalC} biji</strong> secara merata ke <strong>${this.targetA} kelompok</strong>.`;
+                    document.getElementById('train-answer-label').textContent = 'Isi 1 Kelompok = ';
+                    
+                    crtEl.textContent = `"Perhatikan: ${this.totalC} biji dibagikan rata. Jika disatukan lagi, sama seperti perkalian lho!"`;
+                    crtEl.classList.remove('hidden');
+                }
+
+                this.renderBoard();
+            },
+
+            renderBoard() {
+                // Render Pool (Division only)
+                if (AppState.mode === 'divide') {
+                    const poolEl = document.getElementById('train-pool');
+                    poolEl.innerHTML = `<div class="badge">${this.poolData}</div>`;
+                    for (let i = 0; i < Math.min(this.poolData, 40); i++) {
+                        let seed = document.createElement('div');
+                        seed.className = 'seed animate-drop';
+                        poolEl.appendChild(seed);
+                    }
+                }
+
+                // Render Holes
+                const board = document.getElementById('train-board');
+                board.innerHTML = '';
+                this.holesData.forEach((count, i) => {
+                    const hole = document.createElement('div');
+                    hole.className = 'hole';
+                    hole.innerHTML = `<div class="badge">${count}</div>`;
+                    hole.onclick = () => this.holeClick(i);
+
+                    for (let s = 0; s < count; s++) {
+                        let seed = document.createElement('div');
+                        seed.className = 'seed animate-drop';
+                        seed.onclick = (e) => { e.stopPropagation(); this.removeSeed(i); };
+                        hole.appendChild(seed);
+                    }
+                    board.appendChild(hole);
+                });
+            },
+
+            holeClick(index) {
+                if (AppState.mode === 'multiply') {
+                    if (this.holesData[index] < this.targetB + 5) { // allow slight overflow for mistakes
+                        AudioSys.playDrop();
+                        this.holesData[index]++;
+                        this.renderBoard();
+                    }
+                } else if (AppState.mode === 'divide') {
+                    if (this.poolData > 0) {
+                        AudioSys.playDrop();
+                        this.poolData--;
+                        this.holesData[index]++;
+                        this.renderBoard();
+                    } else {
+                        UIHelper.showFeedback("Ops!", "Biji di lumbung sudah habis.", false);
+                    }
+                }
+            },
+
+            removeSeed(index) {
+                if (this.holesData[index] > 0) {
+                    AudioSys.playRemove();
+                    this.holesData[index]--;
+                    if (AppState.mode === 'divide') this.poolData++;
+                    this.renderBoard();
+                }
+            },
+
+            poolClick() {
+                if (AppState.mode === 'divide' && this.poolData > 0) {
+                    AudioSys.playWrong();
+                    // Brief flash toast effect could be here, but let's keep it simple
+                    document.getElementById('train-instruction').classList.add('pulse-glow');
+                    setTimeout(() => document.getElementById('train-instruction').classList.remove('pulse-glow'), 1000);
+                }
+            },
+
+            validateAnswer() {
+                const ansStr = document.getElementById('train-answer').value;
+                if (ansStr === '') {
+                    UIHelper.showFeedback("Belum Lengkap", "Ketikkan jawaban akhirmu di kotak ya.", false);
+                    return;
+                }
+                const answer = parseInt(ansStr);
+
+                if (AppState.mode === 'multiply') {
+                    // Check logic physically
+                    const isConfigCorrect = this.holesData.every(c => c === this.targetB);
+                    if (!isConfigCorrect) {
+                        UIHelper.showFeedback("Susunan Belum Tepat", `Coba periksa lagi. Pastikan ${this.targetA} kelompok masing-masing berisi pas ${this.targetB} biji.`, false);
+                        return;
+                    }
+                    // Check Math
+                    if (answer === this.totalC) {
+                        AppState.score += 20;
+                        AppState.correctCount++;
+                        UIHelper.showFeedback("Hebat!", `Kamu berhasil memahami perkalian! ${this.targetA} kelompok yang berisi ${this.targetB} biji totalnya adalah ${this.totalC}.`, true, () => this.nextQuestion());
+                    } else {
+                        AppState.wrongCount++;
+                        UIHelper.showFeedback("Kurang Tepat", "Susunan bijinya sudah benar. Ayo hitung ulang keseluruhan jumlah bijinya.", false);
+                    }
+                } 
+                else if (AppState.mode === 'divide') {
+                    // Check logic physically
+                    if (this.poolData > 0) {
+                        UIHelper.showFeedback("Belum Selesai", "Pastikan SEMUA biji di lumbung atas dibagikan sampai habis tak tersisa.", false);
+                        return;
+                    }
+                    const isFair = this.holesData.every(c => c === this.holesData[0]);
+                    if (!isFair) {
+                        UIHelper.showFeedback("Tidak Adil!", "Pembagian belum merata. Periksa jumlah biji di setiap kelompok agar sama rata.", false);
+                        return;
+                    }
+                    if (this.holesData[0] !== this.targetB) {
+                        UIHelper.showFeedback("Kesalahan Hitung", "Ulangi membagikan secara bergiliran satu per satu agar tidak salah masuk.", false);
+                        return;
+                    }
+                    // Check Math
+                    if (answer === this.targetB) {
+                        AppState.score += 20;
+                        AppState.correctCount++;
+                        UIHelper.showFeedback("Luar Biasa!", `Bagus! ${this.totalC} biji berhasil dibagikan rata ke ${this.targetA} lubang. Hasilnya tiap lubang dapat ${this.targetB} biji.`, true, () => this.nextQuestion());
+                    } else {
+                        AppState.wrongCount++;
+                        UIHelper.showFeedback("Kurang Tepat", "Perhatikan salah satu kelompok saja. Berapa jumlah biji di dalamnya?", false);
+                    }
+                }
+            }
+        };
+
+        /**
+         * ==========================================
+         * 5. TEACHER DEMO MODE
+         * ==========================================
+         */
+        const DemoMode = {
+            holesData: Array(14).fill(0),
+            pool: 0,
+            activeCount: 0,
+            mode: '',
+
+            setupBoard() {
+                AudioSys.playClick();
+                const n1 = parseInt(document.getElementById('demo-n1').value);
+                const op = document.getElementById('demo-op').value;
+                const n2 = parseInt(document.getElementById('demo-n2').value);
+
+                if (isNaN(n1) || isNaN(n2) || n1 <= 0 || n2 <= 0) {
+                    UIHelper.showFeedback("Angka Tidak Valid", "Mohon masukkan angka bulat positif.", false);
+                    return;
+                }
+                
+                this.holesData = Array(14).fill(0);
+                this.pool = 0;
+                document.getElementById('demo-answer').value = '';
+
+                if (op === 'x') {
+                    if(n1 > 14) { UIHelper.showFeedback("Terbatas", "Maksimal 14 kelompok (lubang) untuk papan ini.", false); return; }
+                    this.mode = 'multiply';
+                    this.activeCount = n1;
+                    document.getElementById('demo-instruction').innerHTML = `Simulasi: Isi <strong>${n1} lubang menyala</strong> masing-masing dengan <strong>${n2} biji</strong>.`;
+                } else {
+                    if(n2 > 14) { UIHelper.showFeedback("Terbatas", "Maksimal pembagi 14 kelompok.", false); return; }
+                    this.mode = 'divide';
+                    this.activeCount = n2;
+                    this.pool = n1;
+                    document.getElementById('demo-instruction').innerHTML = `Simulasi: Bagikan <strong>${n1} biji</strong> dari Lumbung Kiri ke <strong>${n2} lubang menyala</strong>.`;
+                }
+                this.render();
+            },
+
+            render() {
+                // Render Lumbung Kiri
+                const storeLeft = document.getElementById('demo-store-left');
+                storeLeft.innerHTML = `<div class="badge">${this.pool}</div>`;
+                for (let i = 0; i < Math.min(this.pool, 60); i++) {
+                    let s = document.createElement('div');
+                    s.className = 'seed';
+                    storeLeft.appendChild(s);
+                }
+
+                // Render 14 Holes
+                for (let i = 0; i < 14; i++) {
+                    const hole = document.getElementById(`demo-hole-${i}`);
+                    hole.innerHTML = `<div class="badge">${this.holesData[i]}</div>`;
+                    
+                    if (i < this.activeCount && this.mode) hole.classList.add('active-target');
+                    else hole.classList.remove('active-target');
+
+                    for (let s = 0; s < this.holesData[i]; s++) {
+                        let seed = document.createElement('div');
+                        seed.className = 'seed animate-drop';
+                        seed.onclick = (e) => { e.stopPropagation(); this.removeSeed(i); };
+                        hole.appendChild(seed);
+                    }
+                }
+            },
+
+            holeClick(index) {
+                if (index >= this.activeCount) {
+                    AudioSys.playWrong();
+                    return;
+                }
+                if (this.mode === 'multiply') {
+                    AudioSys.playDrop();
+                    this.holesData[index]++;
+                    this.render();
+                } else if (this.mode === 'divide') {
+                    if (this.pool > 0) {
+                        AudioSys.playDrop();
+                        this.pool--;
+                        this.holesData[index]++;
+                        this.render();
+                    } else {
+                        AudioSys.playWrong();
+                    }
+                }
+            },
+
+            removeSeed(index) {
+                if (this.holesData[index] > 0) {
+                    AudioSys.playRemove();
+                    this.holesData[index]--;
+                    if (this.mode === 'divide') this.pool++;
+                    this.render();
+                }
+            },
+
+            storeClick() {
+                if (this.mode === 'divide' && this.pool > 0) {
+                    AudioSys.playWrong();
+                    document.getElementById('demo-instruction').classList.add('pulse-glow');
+                    setTimeout(() => document.getElementById('demo-instruction').classList.remove('pulse-glow'), 1000);
+                }
+            },
+
+            validateAnswer() {
+                AudioSys.playClick();
+                if (!this.mode) return;
+                
+                const ans = document.getElementById('demo-answer').value;
+                if (!ans) {
+                    UIHelper.showFeedback("Info", "Masukkan angka jawaban untuk membuktikan.", false);
+                    return;
+                }
+                
+                // In demo, we just give positive encouragement based on general validation
+                UIHelper.showFeedback("Pembuktian Selesai", "Bagus! Simulasi matematika telah dilakukan dengan alat peraga.", true);
+            }
+        };
+
+        /**
+         * ==========================================
+         * 6. DUEL TOURNAMENT MODE
+         * ==========================================
+         */
+        const DuelMode = {
+            score1: 0,
+            score2: 0,
+            target: 50,
+            correctAnswer: 0,
+            isActive: false,
+
+            start() {
+                this.score1 = 0;
+                this.score2 = 0;
+                this.updateScores();
+                this.nextQuestion();
+            },
+
+            updateScores() {
+                document.getElementById('duel-p1-score').textContent = this.score1;
+                document.getElementById('duel-p2-score').textContent = this.score2;
+            },
+
+            nextQuestion() {
+                this.isActive = true;
+                const isMultiply = Math.random() > 0.5;
+                let qText = '';
+
+                if (isMultiply) {
+                    let a = Math.floor(Math.random() * 9) + 2;
+                    let b = Math.floor(Math.random() * 9) + 2;
+                    this.correctAnswer = a * b;
+                    qText = `${a} x ${b} = ?`;
+                } else {
+                    let b = Math.floor(Math.random() * 9) + 2;
+                    this.correctAnswer = Math.floor(Math.random() * 9) + 2;
+                    let a = b * this.correctAnswer;
+                    qText = `${a} : ${b} = ?`;
+                }
+
+                const qEl = document.getElementById('duel-question');
+                qEl.textContent = qText;
+                qEl.className = "text-4xl md:text-5xl font-black text-gray-800 transition-colors duration-300";
+
+                // Generate distractors
+                let options = [this.correctAnswer];
+                while(options.length < 4) {
+                    let wrong = Math.abs(this.correctAnswer + (Math.floor(Math.random() * 20) - 10));
+                    if (wrong <= 0) wrong = 2;
+                    if (!options.includes(wrong)) options.push(wrong);
+                }
+
+                // Render P1
+                let opts1 = [...options].sort(() => Math.random() - 0.5);
+                const container1 = document.getElementById('duel-p1-options');
+                container1.innerHTML = '';
+                opts1.forEach(opt => {
+                    const btn = document.createElement('button');
+                    btn.className = 'w-full py-4 bg-white rounded-xl font-black text-3xl text-red-800 shadow-md border-b-4 border-red-300 active:translate-y-1 active:border-b-0 touch-manipulation';
+                    btn.textContent = opt;
+                    btn.onclick = () => this.handleAnswer(1, opt);
+                    container1.appendChild(btn);
+                });
+
+                // Render P2
+                let opts2 = [...options].sort(() => Math.random() - 0.5);
+                const container2 = document.getElementById('duel-p2-options');
+                container2.innerHTML = '';
+                opts2.forEach(opt => {
+                    const btn = document.createElement('button');
+                    btn.className = 'w-full py-4 bg-white rounded-xl font-black text-3xl text-blue-800 shadow-md border-b-4 border-blue-300 active:translate-y-1 active:border-b-0 touch-manipulation';
+                    btn.textContent = opt;
+                    btn.onclick = () => this.handleAnswer(2, opt);
+                    container2.appendChild(btn);
+                });
+            },
+
+            handleAnswer(player, answer) {
+                if (!this.isActive) return;
+
+                const qEl = document.getElementById('duel-question');
+
+                if (answer === this.correctAnswer) {
+                    this.isActive = false;
+                    AudioSys.playCorrect();
+                    
+                    qEl.textContent = `P${player} BENAR! (+10)`;
+                    qEl.classList.add('text-green-600');
+
+                    if (player === 1) this.score1 += 10;
+                    else this.score2 += 10;
+                    
+                    this.updateScores();
+
+                    if (this.score1 >= this.target) {
+                        AudioSys.playWin();
+                        UIHelper.showFeedback("Pemain MERAH Menang!", "Selamat, target 50 poin telah tercapai!", true, () => AppFlow.returnToHome());
+                        return;
+                    } else if (this.score2 >= this.target) {
+                        AudioSys.playWin();
+                        UIHelper.showFeedback("Pemain BIRU Menang!", "Selamat, target 50 poin telah tercapai!", true, () => AppFlow.returnToHome());
+                        return;
+                    }
+
+                    setTimeout(() => this.nextQuestion(), 1500);
+
+                } else {
+                    AudioSys.playWrong();
+                    if (player === 1) this.score1 = Math.max(0, this.score1 - 5);
+                    else this.score2 = Math.max(0, this.score2 - 5);
+                    
+                    this.updateScores();
+                    
+                    qEl.textContent = `P${player} SALAH! (-5)`;
+                    qEl.classList.add('text-red-600');
+                    setTimeout(() => { if (this.isActive) qEl.classList.remove('text-red-600'); qEl.textContent = qEl.textContent.replace(`P${player} SALAH! (-5)`, '').trim() || qEl.textContent; }, 1000);
+                }
+            }
+        };
+
+        /**
+         * ==========================================
+         * 7. APP FLOW CONTROLLER
+         * ==========================================
+         */
+        const AppFlow = {
+            startTraining(type) {
+                AudioSys.playClick();
+                UIHelper.showScreen('screen-training');
+                TrainingMode.start(type);
+            },
+
+            startTeacherDemo() {
+                AudioSys.playClick();
+                UIHelper.showScreen('screen-demo');
+                // Reset inputs
+                document.getElementById('demo-n1').value = '';
+                document.getElementById('demo-n2').value = '';
+                document.getElementById('demo-answer').value = '';
+                DemoMode.holesData = Array(14).fill(0);
+                DemoMode.pool = 0;
+                DemoMode.mode = '';
+                DemoMode.render();
+            },
+
+            startDuel() {
+                AudioSys.playClick();
+                UIHelper.showScreen('screen-duel');
+                DuelMode.start();
+            },
+
+            showSummary() {
+                AudioSys.playWin();
+                UIHelper.showScreen('screen-summary');
+                
+                document.getElementById('sum-correct').textContent = AppState.correctCount;
+                document.getElementById('sum-wrong').textContent = AppState.wrongCount;
+                
+                const percent = Math.round((AppState.correctCount / AppState.maxQuestions) * 100);
+                document.getElementById('sum-percent').textContent = `${percent}%`;
+                
+                // Animate bar
+                setTimeout(() => {
+                    document.getElementById('sum-bar').style.width = `${percent}%`;
+                }, 100);
+            },
+
+            returnToHome() {
+                AudioSys.playClick();
+                // Reset summary bar visually for next time
+                document.getElementById('sum-bar').style.width = '0%';
+                UIHelper.showScreen('screen-home');
+            }
+        };
+
+    </script>
+</body>
+</html>
